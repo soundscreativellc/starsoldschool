@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Falling Balls with Cursor Repulsion</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      body {
+        background: #000;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="starfield"></canvas>
+
+    <script>
+      const canvas = document.getElementById("starfield");
+      const ctx = canvas.getContext("2d");
+
+      // Set canvas size to window size
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      // Ball configuration
+      const numBalls = 80;
+      const balls = [];
+      const gravity = 0.15;
+      const friction = 0.98;
+      const restitution = 0.7; // Bounciness
+      const cursorRepelRadius = 150;
+      const cursorRepelForce = 2;
+
+      // Mouse tracking
+      let mouseX = canvas.width / 2;
+      let mouseY = canvas.height / 2;
+
+      // Ball class
+      class Ball {
+        constructor() {
+          this.x = Math.random() * canvas.width;
+          this.y = Math.random() * -canvas.height; // Start above screen
+          this.vx = (Math.random() - 0.5) * 2;
+          this.vy = 0;
+
+          // Physics properties
+          this.mass = 0.5 + Math.random() * 1.5;
+          this.radius = this.mass * 15 + 10;
+
+          // Visual properties
+          const hue = Math.random() * 360;
+          this.color = `hsl(${hue}, 70%, 60%)`;
+        }
+
+        update() {
+          // Apply gravity
+          this.vy += gravity;
+
+          // Calculate distance to cursor
+          const dx = this.x - mouseX;
+          const dy = this.y - mouseY;
+          const distToCursor = Math.sqrt(dx * dx + dy * dy);
+
+          // Apply cursor repulsion force
+          if (distToCursor < cursorRepelRadius && distToCursor > 0) {
+            const force =
+              ((cursorRepelRadius - distToCursor) / cursorRepelRadius) *
+              cursorRepelForce;
+            this.vx += (dx / distToCursor) * force;
+            this.vy += (dy / distToCursor) * force;
+          }
+
+          // Apply movement
+          this.x += this.vx;
+          this.y += this.vy;
+
+          // Apply friction
+          this.vx *= friction;
+          this.vy *= friction;
+
+          // Wall collision with bounce
+          if (this.x - this.radius < 0) {
+            this.x = this.radius;
+            this.vx = Math.abs(this.vx) * restitution;
+          } else if (this.x + this.radius > canvas.width) {
+            this.x = canvas.width - this.radius;
+            this.vx = -Math.abs(this.vx) * restitution;
+          }
+
+          if (this.y - this.radius < 0) {
+            this.y = this.radius;
+            this.vy = Math.abs(this.vy) * restitution;
+          } else if (this.y + this.radius > canvas.height) {
+            this.y = canvas.height - this.radius;
+            this.vy = -Math.abs(this.vy) * restitution;
+          }
+        }
+
+        checkCollision(other) {
+          // Distance between balls in 2D
+          const dx = this.x - other.x;
+          const dy = this.y - other.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const minDist = this.radius + other.radius;
+
+          return distance < minDist;
+        }
+
+        resolveCollision(other) {
+          // Calculate collision normal
+          const dx = other.x - this.x;
+          const dy = other.y - this.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance === 0) return;
+
+          // Normalize
+          const nx = dx / distance;
+          const ny = dy / distance;
+
+          // Relative velocity
+          const dvx = other.vx - this.vx;
+          const dvy = other.vy - this.vy;
+
+          // Relative velocity in collision normal direction
+          const dotProduct = dvx * nx + dvy * ny;
+
+          // Don't resolve if velocities are separating
+          if (dotProduct > 0) return;
+
+          // Calculate impulse scalar
+          const impulse =
+            ((2 * dotProduct) / (this.mass + other.mass)) * restitution;
+
+          // Apply impulse
+          this.vx += impulse * other.mass * nx;
+          this.vy += impulse * other.mass * ny;
+          other.vx -= impulse * this.mass * nx;
+          other.vy -= impulse * this.mass * ny;
+
+          // Separate stars to prevent overlap
+          const overlap = (this.radius + other.radius - distance) / 2;
+          this.x -= overlap * nx;
+          this.y -= overlap * ny;
+          other.x += overlap * nx;
+          other.y += overlap * ny;
+        }
+
+        draw() {
+          // Draw shadow
+          ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+          ctx.beginPath();
+          ctx.arc(this.x + 5, this.y + 5, this.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw ball
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw highlight
+          const gradient = ctx.createRadialGradient(
+            this.x - this.radius * 0.3,
+            this.y - this.radius * 0.3,
+            0,
+            this.x,
+            this.y,
+            this.radius
+          );
+          gradient.addColorStop(0, "rgba(255, 255, 255, 0.6)");
+          gradient.addColorStop(0.3, "rgba(255, 255, 255, 0.2)");
+          gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw outline
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      // Initialize balls
+      for (let i = 0; i < numBalls; i++) {
+        balls.push(new Ball());
+      }
+
+      // Mouse move event listener
+      canvas.addEventListener("mousemove", (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+      });
+
+      // Touch move event listener for mobile
+      canvas.addEventListener("touchmove", (e) => {
+        e.preventDefault();
+        mouseX = e.touches[0].clientX;
+        mouseY = e.touches[0].clientY;
+      });
+
+      // Animation loop
+      function animate() {
+        // Clear canvas with gradient background
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        gradient.addColorStop(0, "#1a1a2e");
+        gradient.addColorStop(1, "#16213e");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw cursor repel radius
+        ctx.strokeStyle = "rgba(255, 100, 100, 0.2)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, cursorRepelRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Update balls
+        balls.forEach((ball) => {
+          ball.update();
+        });
+
+        // Check collisions between balls
+        for (let i = 0; i < balls.length; i++) {
+          for (let j = i + 1; j < balls.length; j++) {
+            if (balls[i].checkCollision(balls[j])) {
+              balls[i].resolveCollision(balls[j]);
+            }
+          }
+        }
+
+        // Draw balls
+        balls.forEach((ball) => {
+          ball.draw();
+        });
+
+        requestAnimationFrame(animate);
+      }
+
+      // Handle window resize
+      window.addEventListener("resize", () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      });
+
+      // Start animation
+      animate();
+    </script>
+  </body>
+</html>
