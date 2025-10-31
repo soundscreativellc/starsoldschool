@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Falling Balls with Cursor Repulsion</title>
+    <title>Draggable Falling Balls</title>
     <style>
       * {
         margin: 0;
@@ -38,15 +38,17 @@
       // Ball configuration
       const numBalls = 80;
       const balls = [];
-      const gravity = 0.15;
+      const gravity = 0.05;
       const friction = 0.98;
-      const restitution = 0.7; // Bounciness
-      const cursorRepelRadius = 150;
-      const cursorRepelForce = 2;
+      const restitution = 0.9; // Bounciness
 
       // Mouse tracking
       let mouseX = canvas.width / 2;
       let mouseY = canvas.height / 2;
+      let isMouseDown = false;
+      let selectedBall = null;
+      let offsetX = 0;
+      let offsetY = 0;
 
       // Ball class
       class Ball {
@@ -66,22 +68,17 @@
         }
 
         update() {
+          // If this ball is selected, move it with cursor using offset
+          if (selectedBall === this) {
+            this.x = mouseX + offsetX;
+            this.y = mouseY + offsetY;
+            this.vx = 0;
+            this.vy = 0;
+            return;
+          }
+
           // Apply gravity
           this.vy += gravity;
-
-          // Calculate distance to cursor
-          const dx = this.x - mouseX;
-          const dy = this.y - mouseY;
-          const distToCursor = Math.sqrt(dx * dx + dy * dy);
-
-          // Apply cursor repulsion force
-          if (distToCursor < cursorRepelRadius && distToCursor > 0) {
-            const force =
-              ((cursorRepelRadius - distToCursor) / cursorRepelRadius) *
-              cursorRepelForce;
-            this.vx += (dx / distToCursor) * force;
-            this.vy += (dy / distToCursor) * force;
-          }
 
           // Apply movement
           this.x += this.vx;
@@ -131,6 +128,35 @@
           const nx = dx / distance;
           const ny = dy / distance;
 
+          // Special handling if one ball is being dragged
+          const thisIsDragged = selectedBall === this;
+          const otherIsDragged = selectedBall === other;
+
+          if (thisIsDragged || otherIsDragged) {
+            // Separate the balls to prevent overlap
+            const overlap = this.radius + other.radius - distance;
+
+            if (thisIsDragged) {
+              // This ball is dragged, push the other away
+              other.x += nx * overlap;
+              other.y += ny * overlap;
+              // Apply strong impulse to push the other ball away
+              const pushForce = 5;
+              other.vx += nx * pushForce;
+              other.vy += ny * pushForce;
+            } else {
+              // Other ball is dragged, push this away
+              this.x -= nx * overlap;
+              this.y -= ny * overlap;
+              // Apply strong impulse to push this ball away
+              const pushForce = 5;
+              this.vx -= nx * pushForce;
+              this.vy -= ny * pushForce;
+            }
+            return;
+          }
+
+          // Normal collision resolution for non-dragged balls
           // Relative velocity
           const dvx = other.vx - this.vx;
           const dvy = other.vy - this.vy;
@@ -217,6 +243,73 @@
         mouseY = e.touches[0].clientY;
       });
 
+      // Mouse down/up event listeners
+      canvas.addEventListener("mousedown", (e) => {
+        isMouseDown = true;
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+
+        // Find the ball under the cursor
+        for (let ball of balls) {
+          const dx = ball.x - mouseX;
+          const dy = ball.y - mouseY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance <= ball.radius) {
+            selectedBall = ball;
+            // Store the offset from mouse to ball center
+            offsetX = ball.x - mouseX;
+            offsetY = ball.y - mouseY;
+            break;
+          }
+        }
+      });
+
+      canvas.addEventListener("mouseup", (e) => {
+        isMouseDown = false;
+        selectedBall = null;
+        offsetX = 0;
+        offsetY = 0;
+      });
+
+      canvas.addEventListener("mouseleave", (e) => {
+        isMouseDown = false;
+        selectedBall = null;
+        offsetX = 0;
+        offsetY = 0;
+      });
+
+      // Touch start/end event listeners for mobile
+      canvas.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        isMouseDown = true;
+        mouseX = e.touches[0].clientX;
+        mouseY = e.touches[0].clientY;
+
+        // Find the ball under the touch
+        for (let ball of balls) {
+          const dx = ball.x - mouseX;
+          const dy = ball.y - mouseY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance <= ball.radius) {
+            selectedBall = ball;
+            // Store the offset from touch to ball center
+            offsetX = ball.x - mouseX;
+            offsetY = ball.y - mouseY;
+            break;
+          }
+        }
+      });
+
+      canvas.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        isMouseDown = false;
+        selectedBall = null;
+        offsetX = 0;
+        offsetY = 0;
+      });
+
       // Animation loop
       function animate() {
         // Clear canvas with gradient background
@@ -226,12 +319,20 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Draw cursor repel radius
-        ctx.strokeStyle = "rgba(255, 100, 100, 0.2)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(mouseX, mouseY, cursorRepelRadius, 0, Math.PI * 2);
-        ctx.stroke();
+        // Draw selected ball indicator
+        if (selectedBall) {
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(
+            selectedBall.x,
+            selectedBall.y,
+            selectedBall.radius + 5,
+            0,
+            Math.PI * 2
+          );
+          ctx.stroke();
+        }
 
         // Update balls
         balls.forEach((ball) => {
